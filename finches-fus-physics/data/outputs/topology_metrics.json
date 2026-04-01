@@ -1,0 +1,178 @@
+{
+  "topology": {
+    "WT": {
+      "n_contacts": 1539,
+      "graph_density": 0.06752665525865473,
+      "mean_degree": 14.383177570093459,
+      "max_degree": 100.0,
+      "sticker_n_contacts": 94,
+      "sticker_graph_density": 0.24867724867724866,
+      "sticker_clustering_coefficient": 0.5782442748091603,
+      "sticker_mean_degree": 6.714285714285714,
+      "sticker_avg_path_length": 1.5052631578947369,
+      "sticker_n_components": 9,
+      "percolation_threshold": -0.04409675584667565,
+      "giant_component_onset": -0.04265833536940686,
+      "max_betweenness": 0.07161311818174564,
+      "mean_betweenness": 0.009768009768009771
+    },
+    "Y143S": {
+      "n_contacts": 1546,
+      "graph_density": 0.0678337940415076,
+      "mean_degree": 14.448598130841122,
+      "max_degree": 101.0,
+      "sticker_n_contacts": 87,
+      "sticker_graph_density": 0.24786324786324787,
+      "sticker_clustering_coefficient": 0.5637149028077754,
+      "sticker_mean_degree": 6.444444444444445,
+      "sticker_avg_path_length": 1.5473684210526315,
+      "sticker_n_components": 8,
+      "percolation_threshold": -0.04409675584667565,
+      "giant_component_onset": -0.039781494414869265,
+      "max_betweenness": 0.12415201465201466,
+      "mean_betweenness": 0.011851851851851855
+    },
+    "AllY_to_S": {
+      "n_contacts": 17137,
+      "graph_density": 0.7519196173928305,
+      "mean_degree": 160.15887850467288,
+      "max_degree": 196.0,
+      "sticker_n_contacts": 0,
+      "sticker_graph_density": 0.0,
+      "sticker_clustering_coefficient": 0.0,
+      "sticker_mean_degree": 0.0,
+      "sticker_avg_path_length": 0.0,
+      "sticker_n_components": 1,
+      "percolation_threshold": 0.0,
+      "giant_component_onset": 0.0,
+      "max_betweenness": 0.0,
+      "mean_betweenness": 0.0
+    },
+    "AllY_to_A": {
+      "n_contacts": 14539,
+      "graph_density": 0.6379272519854329,
+      "mean_degree": 135.8785046728972,
+      "max_degree": 188.0,
+      "sticker_n_contacts": 0,
+      "sticker_graph_density": 0.0,
+      "sticker_clustering_coefficient": 0.0,
+      "sticker_mean_degree": 0.0,
+      "sticker_avg_path_length": 0.0,
+      "sticker_n_components": 1,
+      "percolation_threshold": 0.0,
+      "giant_component_onset": 0.0,
+      "max_betweenness": 0.0,
+      "mean_betweenness": 0.0
+    },
+    "AllY_to_F": {
+      "n_contacts": 939,
+      "graph_density": 0.04120047387126497,
+      "mean_degree": 8.77570093457944,
+      "max_degree": 94.0,
+      "sticker_n_contacts": 94,
+      "sticker_graph_density": 0.24867724867724866,
+      "sticker_clustering_coefficient": 0.5079962370649106,
+      "sticker_mean_degree": 6.714285714285714,
+      "sticker_avg_path_length": 1.5974025974025974,
+      "sticker_n_components": 7,
+      "percolation_threshold": -0.05602280782740055,
+      "giant_component_onset": -0.05448195001096909,
+      "max_betweenness": 0.1461934156378601,
+      "mean_betweenness": 0.014041514041514044
+    }
+  },
+  "homology": {
+    "WT": {
+      "h0_total_persistence": 0.32100414054630577,
+      "h0_max_persistence": 0.02526610033243113,
+      "h0_n_features": 28,
+      "h0_mean_death": 0.01188904224245577,
+      "h1_total_persistence": 0.0,
+      "h1_max_persistence": 0.0,
+      "h1_n_features": 0,
+      "betti_0_auc": 1.6213306225993276,
+      "betti_1_auc": 0.0
+    },
+    "Y143S": {
+      "h0_total_persistence": 0.30568408106576683,
+      "h0_max_persistence": 0.02526610033243113,
+      "h0_n_features": 27,
+      "h0_mean_death": 0.011757080040991031,
+      "h1_total_persistence": 0.0,
+      "h1_max_persistence": 0.0,
+      "h1_n_features": 0,
+      "betti_0_auc": 1.6216282591403808,
+      "betti_1_auc": 0.0
+    },
+    "AllY_to_S": {
+      "h0_total_persistence": 0.0,
+      "h0_max_persistence": 0.0,
+      "h0_n_features": 1,
+      "h0_mean_death": 0.0,
+      "h1_total_persistence": 0.0,
+      "h1_max_persistence": 0.0,
+      "h1_n_features": 0,
+      "betti_0_auc": 0.0,
+      "betti_1_auc": 0.0
+    },
+    "AllY_to_A": {
+      "h0_total_persistence": 0.0,
+      "h0_max_persistence": 0.0,
+      "h0_n_features": 1,
+      "h0_mean_death": 0.0,
+      "h1_total_persistence": 0.0,
+      "h1_max_persistence": 0.0,
+      "h1_n_features": 0,
+      "betti_0_auc": 0.0,
+      "betti_1_auc": 0.0
+    },
+    "AllY_to_F": {
+      "h0_total_persistence": 0.6121467424436534,
+      "h0_max_persistence": 0.039304965417558395,
+      "h0_n_features": 28,
+      "h0_mean_death": 0.022672101571987163,
+      "h1_total_persistence": 0.0,
+      "h1_max_persistence": 0.0,
+      "h1_n_features": 0,
+      "betti_0_auc": 1.7408892174279877,
+      "betti_1_auc": 0.0
+    }
+  },
+  "entropy": {
+    "WT": {
+      "spacing_entropy": 2.438986575756772,
+      "normalized_spacing_entropy": 0.8129955252522573,
+      "block_entropy": 2.5056558248337484,
+      "interaction_entropy": 3.9873582542303216,
+      "composition_entropy": 0.222284830685688
+    },
+    "Y143S": {
+      "spacing_entropy": 2.363713275750189,
+      "normalized_spacing_entropy": 0.8419716570848635,
+      "block_entropy": 2.4861755626027757,
+      "interaction_entropy": 3.993091653681082,
+      "composition_entropy": 0.228538143953528
+    },
+    "AllY_to_S": {
+      "spacing_entropy": 0.0,
+      "normalized_spacing_entropy": 0.0,
+      "block_entropy": 0.9182958340544896,
+      "interaction_entropy": 0.0,
+      "composition_entropy": -0.0
+    },
+    "AllY_to_A": {
+      "spacing_entropy": 0.0,
+      "normalized_spacing_entropy": 0.0,
+      "block_entropy": 0.9182958340544896,
+      "interaction_entropy": 0.0,
+      "composition_entropy": -0.0
+    },
+    "AllY_to_F": {
+      "spacing_entropy": 2.438986575756772,
+      "normalized_spacing_entropy": 0.8129955252522573,
+      "block_entropy": 2.5056558248337484,
+      "interaction_entropy": 3.945608688048972,
+      "composition_entropy": 0.222284830685688
+    }
+  }
+}

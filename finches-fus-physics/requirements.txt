@@ -1,0 +1,20 @@
+# FINCHES-FUS-Physics: Physics-based FUS LCD analysis pipeline
+# Python 3.8+ required
+
+# Core scientific computing
+numpy>=1.20.0
+scipy>=1.7.0
+
+# Visualization
+matplotlib>=3.4.0
+
+# Jupyter notebooks
+jupyter>=1.0.0
+jupyterlab>=3.0.0
+ipykernel>=6.0.0
+
+# Optional: pandas for tabular data export
+pandas>=1.3.0
+
+# Optional: for progress bars in long computations
+tqdm>=4.60.0
