@@ -20,51 +20,89 @@ Sequence → FINCHES-style intermaps → Sliding-window smoothing →
 Sticker segmentation → Difference maps → Coarse-grained metrics
 ```
 
+## Architecture: Dual Python + Julia Stack
+
+This project uses a **dual-stack architecture** for maximum leverage:
+
+| Layer | Language | Purpose | Key Packages |
+|-------|----------|---------|--------------|
+| **Core physics** | Julia | Differentiable Hamiltonian, fast sweeps | Zygote.jl, Graphs.jl, MetaGraphs.jl |
+| **Ecosystem + ML** | Python | TDA, visualization, GNN experiments | giotto-tda, NetworkX, PyTorch Geometric |
+| **Bridge** | juliacall | Zero-copy array transfer between stacks | PythonCall.jl / juliacall |
+
+### Why Julia for the core?
+
+- **C-like speed** for O(N^2) interaction maps and percolation sweeps (10-50x over NumPy)
+- **Differentiable Hamiltonian** via Zygote.jl — gradient of energy w.r.t. topology features
+- **Composable math** — symbolic + numerical hybrid models with no FFI overhead
+- **Graceful fallback** — Python-only mode works if Julia is not installed
+
 ## Installation
 
 ```bash
-# Clone the repository
+# Clone and enter
 git clone https://github.com/your-username/finches-fus-physics.git
 cd finches-fus-physics
 
-# Create virtual environment (recommended)
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+# Option A: Full dual-stack setup (recommended)
+chmod +x setup_stack.sh
+./setup_stack.sh
 
-# Install dependencies
+# Option B: Python-only (Julia features disabled)
+python -m venv venv
+source venv/bin/activate
 pip install -r requirements.txt
 
 # Add src to Python path (for notebook imports)
 export PYTHONPATH="${PYTHONPATH}:$(pwd)"
 ```
 
+### Julia setup (if installing manually)
+
+```bash
+# Requires Julia 1.9+ (https://julialang.org/downloads/)
+julia --project=julia -e 'using Pkg; Pkg.instantiate(); Pkg.precompile()'
+
+# Run tests
+julia --project=julia julia/test/runtests.jl
+```
+
 ## Project Structure
 
 ```
 finches-fus-physics/
-├── notebooks/
-│   ├── 01_sequences_and_mutations.ipynb    # Sequence handling and variants
-│   ├── 02_forcefield_and_intermaps.ipynb   # Force field and interaction maps
-│   ├── 03_sliding_window_and_sticker_masks.ipynb  # Sticker identification
-│   ├── 04_difference_maps_and_profiles.ipynb      # Mutation effect analysis
-│   ├── 05_sticker_linker_metrics.ipynb     # Biophysical metrics
-│   └── 06_minimal_model_and_figures.ipynb  # Publication figures
+├── julia/                    # ← Julia core (high-performance physics)
+│   ├── Project.toml          #   Julia package manifest
+│   ├── src/
+│   │   ├── FinchesPhysics.jl #   Module entry point
+│   │   ├── amino_acids.jl    #   AA properties (StaticArrays for AD)
+│   │   ├── hamiltonian.jl    #   Differentiable MPIPI-GG Hamiltonian
+│   │   ├── topology.jl       #   Graph analysis (Graphs.jl + MetaGraphs.jl)
+│   │   ├── homology.jl       #   Persistent homology (H0, H1)
+│   │   └── bridge.jl         #   PythonCall entry points
+│   └── test/
+│       └── runtests.jl       #   Julia test suite
 │
-├── src/
+├── src/                      # ← Python layer (ecosystem + analysis)
 │   ├── __init__.py
-│   ├── sequences.py      # FUS LCD sequence and mutation utilities
-│   ├── forcefield.py     # MPIPI-GG style residue-residue interactions
-│   ├── intermaps.py      # Interaction map generation and processing
-│   ├── segmentation.py   # Sticker-linker segmentation
-│   ├── metrics.py        # Biophysical metrics computation
-│   └── plotting.py       # Publication-quality visualization
+│   ├── sequences.py          #   Sequence handling and variants
+│   ├── forcefield.py         #   MPIPI-GG force field (Python reference)
+│   ├── intermaps.py          #   Interaction map generation
+│   ├── segmentation.py       #   Sticker-linker segmentation
+│   ├── metrics.py            #   Biophysical metrics
+│   ├── topology.py           #   Graph analysis (Python reference)
+│   ├── homology.py           #   Persistent homology (Python reference)
+│   ├── entropy.py            #   Information-theoretic measures
+│   ├── plotting.py           #   Publication-quality visualization
+│   └── bridge/               # ← Python ↔ Julia interop
+│       ├── __init__.py
+│       └── julia_bridge.py   #   JuliaBackend class
 │
-├── data/
-│   ├── sequences/        # FASTA files and variant registry
-│   └── outputs/          # Computed intermaps, metrics, etc.
-│
-├── figures/              # Generated publication figures
-├── requirements.txt
+├── notebooks/                # Analysis notebooks (01-07)
+├── data/                     # Sequences + computed outputs
+├── figures/                  # Publication figures
+├── requirements.txt          # Python dependencies
+├── setup_stack.sh            # One-command dual-stack setup
 └── README.md
 ```
 
@@ -105,6 +143,28 @@ sticker_bool = identify_stickers_hybrid(profile, wt, energy_threshold=-0.15)
 sticker_mask = create_sticker_mask(sticker_bool)
 
 print(f"Sticker fraction: {sticker_mask.sticker_fraction:.2%}")
+```
+
+### Using the Julia Backend (High Performance)
+
+```python
+from src.bridge import julia_available, JuliaBackend
+
+if julia_available():
+    jl = JuliaBackend()
+
+    # 10-50x faster interaction map generation
+    imap = jl.compute_intermap("MASNDYTQQATQSYGAYPTQPGQGY", sigma=2.0)
+
+    # Differentiable Hamiltonian — the big unlock
+    # ∂H/∂(sticker positions): which stickers matter most?
+    sticker_positions = [5, 13, 17, 24]  # 0-based Y positions
+    grad = jl.gradient_topology("MASNDYTQQATQSYGAYPTQPGQGY", sticker_positions)
+    print(f"Sticker sensitivity: {grad}")
+
+    # Fast topology + homology
+    topo = jl.compute_topology(imap, sticker_positions, threshold=-0.2)
+    homo = jl.compute_homology(imap, sticker_positions)
 ```
 
 ### Running Notebooks
