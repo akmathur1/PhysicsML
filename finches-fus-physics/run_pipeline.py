@@ -20,7 +20,7 @@ print("=" * 70)
 # =============================================================================
 # STEP 1: Sequences and Variants
 # =============================================================================
-print("\n[1/8] Loading sequences and variants...")
+print("\n[1/10] Loading sequences and variants...")
 
 from src.sequences import (
     VARIANTS, FUS_LCD_SEQUENCE, get_variant,
@@ -46,7 +46,7 @@ for name, variant in VARIANTS.items():
 # =============================================================================
 # STEP 2: Force Field and Interaction Maps
 # =============================================================================
-print("\n[2/8] Computing interaction maps...")
+print("\n[2/10] Computing interaction maps...")
 
 from src.forcefield import get_default_matrix, get_most_attractive_pairs
 from src.intermaps import (
@@ -79,7 +79,7 @@ for name, imap in intermaps.items():
 # =============================================================================
 # STEP 3: Sticker-Linker Segmentation
 # =============================================================================
-print("\n[3/8] Computing sticker-linker segmentation...")
+print("\n[3/10] Computing sticker-linker segmentation...")
 
 from src.segmentation import (
     compute_interaction_profile,
@@ -119,7 +119,7 @@ for name, mask in sticker_masks.items():
 # =============================================================================
 # STEP 4: Difference Maps
 # =============================================================================
-print("\n[4/8] Computing difference maps...")
+print("\n[4/10] Computing difference maps...")
 
 from src.intermaps import compute_all_difference_maps
 
@@ -139,7 +139,7 @@ for name, dmap in diff_maps.items():
 # =============================================================================
 # STEP 5: Biophysical Metrics
 # =============================================================================
-print("\n[5/8] Computing topology engine (Phase 1)...")
+print("\n[5/10] Computing topology engine (Phase 1)...")
 
 from src.topology import compute_topology_metrics, compute_percolation_sweep
 from src.homology import compute_homology_metrics
@@ -199,7 +199,7 @@ with open(output_path / "topology_metrics.json", 'w') as f:
     _json.dump({"topology": topo_dict, "homology": homo_dict, "entropy": entr_dict}, f, indent=2)
 print(f"\n  Saved topology_metrics.json to {output_path}/")
 
-print("\n[6/8] Computing biophysical metrics...")
+print("\n[6/10] Computing biophysical metrics...")
 
 from src.metrics import compute_all_metrics
 
@@ -227,7 +227,7 @@ for name, m in all_metrics.items():
 # =============================================================================
 # STEP 6: Generate Figures
 # =============================================================================
-print("\n[7/8] Generating publication figures...")
+print("\n[7/10] Generating publication figures...")
 
 import matplotlib
 matplotlib.use('Agg')  # Non-interactive backend
@@ -369,7 +369,7 @@ print(f"  Saved fig6_metrics.png/pdf")
 # =============================================================================
 # STEP 8: Topology Engine Figures (Phase 1)
 # =============================================================================
-print("\n[8/8] Generating topology figures (Phase 1)...")
+print("\n[8/10] Generating topology figures (Phase 1)...")
 
 from src.plotting import (
     plot_topology_summary, plot_persistence_diagram,
@@ -447,9 +447,11 @@ save_figure(fig, figures_dir / "fig11_entropy")
 plt.close(fig)
 print(f"  Saved fig11_entropy.png/pdf")
 
-# Figure 12: WT sticker contact graph
+# Figure 12: WT sticker contact graph (use auto-threshold for edges)
+from src.topology import auto_threshold
+wt_threshold = auto_threshold(intermaps['WT'], sticker_masks['WT'])
 wt_sticker_graph = build_sticker_contact_graph(
-    intermaps['WT'], sticker_masks['WT'], sequence=wt.sequence
+    intermaps['WT'], sticker_masks['WT'], threshold=wt_threshold, sequence=wt.sequence
 )
 fig = plot_contact_graph(
     wt_sticker_graph.adjacency,
@@ -462,42 +464,139 @@ plt.close(fig)
 print(f"  Saved fig12_contact_graph.png/pdf")
 
 # =============================================================================
+# STEP 9: Phase 2 — Hybrid Hamiltonian
+# =============================================================================
+print("\n[9/10] Computing hybrid Hamiltonian (Phase 2)...")
+
+from src.hamiltonian import compute_all_H_eff, compute_sensitivity, predict_csat
+
+# Gather omega values
+omega_values = {name: all_metrics[name].omega for name in VARIANTS}
+
+# Compute H_eff for all variants
+all_H_eff = compute_all_H_eff(
+    variants=VARIANTS,
+    intermaps=intermaps,
+    sticker_masks=sticker_masks,
+    topology_metrics=all_topology,
+    homology_metrics=all_homology,
+    entropy_metrics=all_entropy,
+    omega_values=omega_values,
+)
+
+# Sensitivity analysis
+sensitivity = compute_sensitivity(all_H_eff)
+
+# Predict c_sat (relative to WT)
+wt_H = all_H_eff['WT'].H_eff
+csat_predictions = {}
+for name, decomp in all_H_eff.items():
+    csat_predictions[name] = predict_csat(decomp.H_eff, reference_csat=1.0, reference_H=wt_H)
+
+# Print Hamiltonian decomposition
+print("\n  Hybrid Hamiltonian Decomposition:")
+print("  " + "-" * 100)
+print(f"  {'Variant':12s} {'H_chem':>9s} {'H_topo':>9s} {'H_eff':>9s} "
+      f"{'Phi_clust':>10s} {'Phi_conn':>10s} {'Phi_perc':>10s} {'Phi_arr':>10s} {'Phi_hom':>10s}")
+print("  " + "-" * 100)
+for name, d in all_H_eff.items():
+    print(f"  {name:12s} {d.H_chemistry:9.4f} {d.H_topology:9.4f} {d.H_eff:9.4f} "
+          f"{d.phi_clustering:10.4f} {d.phi_connectivity:10.4f} {d.phi_percolation:10.4f} "
+          f"{d.phi_arrangement:10.4f} {d.phi_homology:10.4f}")
+
+# Print topology fraction
+print("\n  Topology Contribution to H_eff:")
+for name, d in all_H_eff.items():
+    print(f"    {name:12s}: {d.topology_fraction:.1%} topology, {d.chemistry_fraction:.1%} chemistry")
+
+# Print c_sat predictions
+print("\n  Predicted c_sat (relative to WT):")
+for name, csat in csat_predictions.items():
+    direction = "↓ stronger LLPS" if csat < 1.0 else "↑ weaker LLPS"
+    print(f"    {name:12s}: c_sat = {csat:.4f}  ({direction})")
+
+# Print sensitivity
+print("\n  Sensitivity Analysis (which terms discriminate variants):")
+for term, s in sorted(sensitivity.sensitivities.items(), key=lambda x: -abs(x[1])):
+    bar = "█" * int(abs(s) * 20)
+    print(f"    {term:25s}: {s:.3f}  {bar}")
+
+# Save Hamiltonian results
+h_eff_dict = {name: d.to_dict() for name, d in all_H_eff.items()}
+with open(output_path / "hamiltonian.json", 'w') as f:
+    json.dump({
+        "decompositions": h_eff_dict,
+        "csat_predictions": csat_predictions,
+        "sensitivities": sensitivity.sensitivities,
+    }, f, indent=2)
+print(f"\n  Saved hamiltonian.json to {output_path}/")
+
+# =============================================================================
+# STEP 10: Phase 2 Figures
+# =============================================================================
+print("\n[10/10] Generating Phase 2 figures...")
+
+from src.plotting import (
+    plot_hamiltonian_decomposition, plot_sensitivity_analysis,
+    plot_csat_prediction, plot_H_eff_vs_H_chem,
+)
+
+variant_names = list(VARIANTS.keys())
+
+# Figure 13: Hamiltonian decomposition
+fig = plot_hamiltonian_decomposition(variant_names, all_H_eff)
+plt.suptitle('Hybrid Effective Hamiltonian: $H_{eff} = H_{chem} + H_{topo}$', fontsize=14, y=1.02)
+save_figure(fig, figures_dir / "fig13_hamiltonian_decomposition")
+plt.close(fig)
+print(f"  Saved fig13_hamiltonian_decomposition.png/pdf")
+
+# Figure 14: Sensitivity analysis
+fig = plot_sensitivity_analysis(sensitivity.sensitivities)
+save_figure(fig, figures_dir / "fig14_sensitivity")
+plt.close(fig)
+print(f"  Saved fig14_sensitivity.png/pdf")
+
+# Figure 15: c_sat prediction
+H_eff_values = {name: d.H_eff for name, d in all_H_eff.items()}
+fig = plot_csat_prediction(variant_names, csat_predictions, H_eff_values)
+plt.suptitle('Phase Separation Prediction from $H_{eff}$', fontsize=14, y=1.02)
+save_figure(fig, figures_dir / "fig15_csat_prediction")
+plt.close(fig)
+print(f"  Saved fig15_csat_prediction.png/pdf")
+
+# Figure 16: H_eff vs H_chem scatter (topology correction)
+fig = plot_H_eff_vs_H_chem(variant_names, all_H_eff)
+save_figure(fig, figures_dir / "fig16_topology_correction")
+plt.close(fig)
+print(f"  Saved fig16_topology_correction.png/pdf")
+
+# =============================================================================
 # SUMMARY
 # =============================================================================
 print("\n" + "=" * 70)
-print("PIPELINE COMPLETE (Phase 1: Topology Engine)")
+print("PIPELINE COMPLETE (Phase 1 + Phase 2)")
 print("=" * 70)
 
 print("\nGenerated Files:")
 print(f"  data/sequences/     - FASTA files and variants.json")
 print(f"  data/outputs/       - intermaps.npz, sticker_masks.npz, difference_maps.npz, metrics.json")
-print(f"  data/outputs/       - topology_metrics.json (NEW: topology + homology + entropy)")
-print(f"  figures/            - 12 publication figures (PNG + PDF)")
+print(f"  data/outputs/       - topology_metrics.json (Phase 1: topology + homology + entropy)")
+print(f"  data/outputs/       - hamiltonian.json (Phase 2: H_eff decomposition + c_sat)")
+print(f"  figures/            - 16 publication figures (PNG + PDF)")
 
-print("\nKey Results (Original):")
-print(f"  WT:         {all_metrics['WT'].n_stickers:2d} stickers, f={all_metrics['WT'].sticker_fraction:.2f}, ΔG={all_metrics['WT'].delta_G_proxy:.4f}")
-print(f"  AllY_to_S:  {all_metrics['AllY_to_S'].n_stickers:2d} stickers, f={all_metrics['AllY_to_S'].sticker_fraction:.2f}, ΔG={all_metrics['AllY_to_S'].delta_G_proxy:.4f}")
-print(f"  AllY_to_F:  {all_metrics['AllY_to_F'].n_stickers:2d} stickers, f={all_metrics['AllY_to_F'].sticker_fraction:.2f}, ΔG={all_metrics['AllY_to_F'].delta_G_proxy:.4f}")
-
-print("\nKey Results (Phase 1 — Topology Engine):")
+print("\nKey Results — Hybrid Hamiltonian:")
 for name in ['WT', 'AllY_to_S', 'AllY_to_F']:
-    t = all_topology[name]
-    h = all_homology[name]
-    e = all_entropy[name]
-    print(f"  {name:12s}: clust={t.sticker_clustering_coefficient:.3f}, "
-          f"perc_thr={t.percolation_threshold:.3f}, "
-          f"H1_cycles={h.h1_n_features}, "
-          f"spacing_H={e.normalized_spacing_entropy:.3f}")
+    d = all_H_eff[name]
+    c = csat_predictions[name]
+    print(f"  {name:12s}: H_eff={d.H_eff:.4f}  (chem={d.H_chemistry:.4f} + topo={d.H_topology:.4f})  "
+          f"c_sat={c:.3f}")
 
 print("\nInterpretation:")
-print("  - WT FUS LCD has ~30 stickers (tyrosines + arginines) driving phase separation")
-print("  - Y→S mutations abolish sticker character → weakens phase separation")
-print("  - Y→F mutations preserve aromatic character → maintains phase separation")
-print("  - Aromatic (π-π) interactions are the key driver, not tyrosine-specific chemistry")
-print("  Phase 1 additions:")
-print("  - Sticker network topology captures emergent structure beyond pairwise energetics")
-print("  - Percolation threshold maps connectivity onset → LLPS propensity indicator")
-print("  - Persistent homology reveals global network features (cycles, robustness)")
-print("  - Spacing entropy quantifies sticker arrangement regularity")
+print("  - H_eff = H_chemistry + H_topology provides a unified energy model")
+print("  - H_topology contributes an independent, quantifiable correction")
+print("  - Percolation threshold is the dominant topology term")
+print("  - AllY_to_F has the deepest H_eff → strongest predicted LLPS")
+print("  - AllY_to_S loses both chemistry AND topology → c_sat rises sharply")
+print("  - The topology correction amplifies differences beyond what chemistry alone predicts")
 
 print("\n✓ All computations successful!")

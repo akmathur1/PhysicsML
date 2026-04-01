@@ -18,6 +18,7 @@ from . import metrics
 from . import topology
 from . import homology
 from . import entropy
+from . import hamiltonian
 from . import plotting
 
 __version__ = "0.2.0"

@@ -1198,6 +1198,235 @@ def plot_entropy_comparison(
     return fig
 
 
+# =============================================================================
+# HAMILTONIAN VISUALIZATIONS (Phase 2)
+# =============================================================================
+
+def plot_hamiltonian_decomposition(
+    variant_names: List[str],
+    decompositions: Dict,
+    figsize: Tuple[float, float] = (14, 6),
+) -> plt.Figure:
+    """
+    Stacked bar chart showing H_chemistry vs H_topology for each variant.
+
+    Parameters
+    ----------
+    variant_names : List[str]
+        Variant names in display order
+    decompositions : Dict
+        Dict mapping name -> HamiltonianDecomposition
+    figsize : Tuple
+        Figure size
+
+    Returns
+    -------
+    plt.Figure
+    """
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=figsize)
+    x = np.arange(len(variant_names))
+    width = 0.6
+
+    # Left panel: H_eff decomposition (H_chem + H_topo stacked)
+    h_chem = [decompositions[n].H_chemistry for n in variant_names]
+    h_topo = [decompositions[n].H_topology for n in variant_names]
+    h_eff = [decompositions[n].H_eff for n in variant_names]
+
+    ax1.bar(x, h_chem, width, label='$H_{chemistry}$', color='#3498DB', edgecolor='black')
+    ax1.bar(x, h_topo, width, bottom=h_chem, label='$H_{topology}$', color='#E74C3C', edgecolor='black')
+    ax1.scatter(x, h_eff, color='black', zorder=5, s=40, label='$H_{eff}$')
+    ax1.set_xticks(x)
+    ax1.set_xticklabels(variant_names, rotation=45, ha='right')
+    ax1.set_ylabel('Energy (kT)')
+    ax1.set_title('A. Effective Hamiltonian Decomposition')
+    ax1.axhline(y=0, color='black', linewidth=0.5)
+    ax1.legend(fontsize=9)
+
+    # Right panel: topology term breakdown
+    terms = ['phi_clustering', 'phi_connectivity', 'phi_percolation',
+             'phi_arrangement', 'phi_homology']
+    colors = ['#E74C3C', '#F39C12', '#9B59B6', '#2ECC71', '#3498DB']
+    labels = ['Clustering', 'Connectivity', 'Percolation', 'Arrangement', 'Homology']
+
+    bottom = np.zeros(len(variant_names))
+    for term, color, label in zip(terms, colors, labels):
+        vals = np.array([getattr(decompositions[n], term) for n in variant_names])
+        ax2.bar(x, vals, width, bottom=bottom, label=label, color=color, edgecolor='black', linewidth=0.5)
+        bottom += vals
+
+    ax2.set_xticks(x)
+    ax2.set_xticklabels(variant_names, rotation=45, ha='right')
+    ax2.set_ylabel('Energy (kT)')
+    ax2.set_title('B. $H_{topology}$ Term Breakdown')
+    ax2.axhline(y=0, color='black', linewidth=0.5)
+    ax2.legend(fontsize=8, loc='best')
+
+    plt.tight_layout()
+    return fig
+
+
+def plot_sensitivity_analysis(
+    sensitivities: Dict[str, float],
+    figsize: Tuple[float, float] = (10, 5),
+) -> plt.Figure:
+    """
+    Horizontal bar chart of Hamiltonian term sensitivities.
+
+    Parameters
+    ----------
+    sensitivities : Dict[str, float]
+        Term name -> sensitivity value
+    figsize : Tuple
+        Figure size
+
+    Returns
+    -------
+    plt.Figure
+    """
+    fig, ax = plt.subplots(1, 1, figsize=figsize)
+
+    # Sort by sensitivity
+    sorted_items = sorted(sensitivities.items(), key=lambda x: abs(x[1]), reverse=True)
+    names = [item[0] for item in sorted_items]
+    values = [item[1] for item in sorted_items]
+
+    # Color: chemistry terms blue, topology terms red
+    chem_terms = {"E_sticker_sticker", "E_cross", "E_linker_linker"}
+    colors = ['#3498DB' if n in chem_terms else '#E74C3C' for n in names]
+
+    # Clean up names for display
+    display_names = []
+    for n in names:
+        clean = n.replace("E_", "").replace("phi_", "").replace("_", " ").title()
+        display_names.append(clean)
+
+    y_pos = np.arange(len(names))
+    ax.barh(y_pos, values, color=colors, edgecolor='black')
+    ax.set_yticks(y_pos)
+    ax.set_yticklabels(display_names)
+    ax.set_xlabel('Sensitivity (std of term / std of $H_{eff}$)')
+    ax.set_title('Hamiltonian Sensitivity Analysis')
+
+    # Legend
+    from matplotlib.patches import Patch
+    legend_elements = [Patch(facecolor='#3498DB', label='Chemistry'),
+                       Patch(facecolor='#E74C3C', label='Topology')]
+    ax.legend(handles=legend_elements, loc='lower right')
+
+    ax.invert_yaxis()
+    plt.tight_layout()
+    return fig
+
+
+def plot_csat_prediction(
+    variant_names: List[str],
+    csat_values: Dict[str, float],
+    H_eff_values: Dict[str, float],
+    figsize: Tuple[float, float] = (12, 5),
+) -> plt.Figure:
+    """
+    Plot predicted c_sat vs H_eff.
+
+    Parameters
+    ----------
+    variant_names : List[str]
+        Variant names
+    csat_values : Dict[str, float]
+        Predicted c_sat per variant
+    H_eff_values : Dict[str, float]
+        H_eff per variant
+    figsize : Tuple
+        Figure size
+
+    Returns
+    -------
+    plt.Figure
+    """
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=figsize)
+
+    x = np.arange(len(variant_names))
+
+    # Left: bar chart of c_sat
+    csat = [csat_values[n] for n in variant_names]
+    colors = ['#2C3E50' if c <= 1.5 else '#E74C3C' for c in csat]
+    ax1.bar(x, csat, color=colors, edgecolor='black')
+    ax1.set_xticks(x)
+    ax1.set_xticklabels(variant_names, rotation=45, ha='right')
+    ax1.set_ylabel('Predicted $c_{sat}$ (relative to WT)')
+    ax1.set_title('A. Saturation Concentration Prediction')
+    ax1.axhline(y=1.0, color='gray', linestyle='--', alpha=0.5, label='WT reference')
+    ax1.set_yscale('log')
+    ax1.legend(fontsize=9)
+
+    # Right: scatter H_eff vs c_sat
+    h_vals = [H_eff_values[n] for n in variant_names]
+    csat_vals = [csat_values[n] for n in variant_names]
+    ax2.scatter(h_vals, csat_vals, s=80, c='#2C3E50', edgecolors='black', zorder=5)
+    for i, name in enumerate(variant_names):
+        ax2.annotate(name, (h_vals[i], csat_vals[i]),
+                     textcoords="offset points", xytext=(8, 5), fontsize=9)
+    ax2.set_xlabel('$H_{eff}$ (kT)')
+    ax2.set_ylabel('Predicted $c_{sat}$ (relative)')
+    ax2.set_title('B. $H_{eff}$ vs $c_{sat}$')
+    ax2.set_yscale('log')
+
+    plt.tight_layout()
+    return fig
+
+
+def plot_H_eff_vs_H_chem(
+    variant_names: List[str],
+    decompositions: Dict,
+    figsize: Tuple[float, float] = (7, 6),
+) -> plt.Figure:
+    """
+    Scatter plot comparing H_eff vs H_chemistry alone.
+
+    Shows how topology corrections shift the energy landscape.
+
+    Parameters
+    ----------
+    variant_names : List[str]
+        Variant names
+    decompositions : Dict
+        Hamiltonian decompositions
+    figsize : Tuple
+        Figure size
+
+    Returns
+    -------
+    plt.Figure
+    """
+    fig, ax = plt.subplots(1, 1, figsize=figsize)
+
+    h_chem = [decompositions[n].H_chemistry for n in variant_names]
+    h_eff = [decompositions[n].H_eff for n in variant_names]
+
+    # Identity line
+    all_vals = h_chem + h_eff
+    vmin, vmax = min(all_vals) * 1.1, max(all_vals) * 0.9
+    ax.plot([vmin, vmax], [vmin, vmax], 'k--', alpha=0.3, linewidth=1, label='$H_{eff} = H_{chem}$')
+
+    # Points with arrows showing topology correction
+    for i, name in enumerate(variant_names):
+        ax.annotate('', xy=(h_chem[i], h_eff[i]),
+                     xytext=(h_chem[i], h_chem[i]),
+                     arrowprops=dict(arrowstyle='->', color='#E74C3C', lw=1.5))
+
+    ax.scatter(h_chem, h_eff, s=80, c='#2C3E50', edgecolors='black', zorder=5)
+    for i, name in enumerate(variant_names):
+        ax.annotate(name, (h_chem[i], h_eff[i]),
+                     textcoords="offset points", xytext=(8, 5), fontsize=9)
+
+    ax.set_xlabel('$H_{chemistry}$ (kT)')
+    ax.set_ylabel('$H_{eff}$ (kT)')
+    ax.set_title('Topology Correction to Chemistry\n(arrows = $H_{topology}$ contribution)')
+    ax.legend(fontsize=9)
+
+    plt.tight_layout()
+    return fig
+
+
 # Apply publication style on import
 set_publication_style()
 
