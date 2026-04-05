@@ -20,7 +20,7 @@ print("=" * 70)
 # =============================================================================
 # STEP 1: Sequences and Variants
 # =============================================================================
-print("\n[1/10] Loading sequences and variants...")
+print("\n[1/12] Loading sequences and variants...")
 
 from src.sequences import (
     VARIANTS, FUS_LCD_SEQUENCE, get_variant,
@@ -46,7 +46,7 @@ for name, variant in VARIANTS.items():
 # =============================================================================
 # STEP 2: Force Field and Interaction Maps
 # =============================================================================
-print("\n[2/10] Computing interaction maps...")
+print("\n[2/12] Computing interaction maps...")
 
 from src.forcefield import get_default_matrix, get_most_attractive_pairs
 from src.intermaps import (
@@ -79,7 +79,7 @@ for name, imap in intermaps.items():
 # =============================================================================
 # STEP 3: Sticker-Linker Segmentation
 # =============================================================================
-print("\n[3/10] Computing sticker-linker segmentation...")
+print("\n[3/12] Computing sticker-linker segmentation...")
 
 from src.segmentation import (
     compute_interaction_profile,
@@ -119,7 +119,7 @@ for name, mask in sticker_masks.items():
 # =============================================================================
 # STEP 4: Difference Maps
 # =============================================================================
-print("\n[4/10] Computing difference maps...")
+print("\n[4/12] Computing difference maps...")
 
 from src.intermaps import compute_all_difference_maps
 
@@ -139,7 +139,7 @@ for name, dmap in diff_maps.items():
 # =============================================================================
 # STEP 5: Biophysical Metrics
 # =============================================================================
-print("\n[5/10] Computing topology engine (Phase 1)...")
+print("\n[5/12] Computing topology engine (Phase 1)...")
 
 from src.topology import compute_topology_metrics, compute_percolation_sweep
 from src.homology import compute_homology_metrics
@@ -199,7 +199,7 @@ with open(output_path / "topology_metrics.json", 'w') as f:
     _json.dump({"topology": topo_dict, "homology": homo_dict, "entropy": entr_dict}, f, indent=2)
 print(f"\n  Saved topology_metrics.json to {output_path}/")
 
-print("\n[6/10] Computing biophysical metrics...")
+print("\n[6/12] Computing biophysical metrics...")
 
 from src.metrics import compute_all_metrics
 
@@ -227,7 +227,7 @@ for name, m in all_metrics.items():
 # =============================================================================
 # STEP 6: Generate Figures
 # =============================================================================
-print("\n[7/10] Generating publication figures...")
+print("\n[7/12] Generating publication figures...")
 
 import matplotlib
 matplotlib.use('Agg')  # Non-interactive backend
@@ -369,7 +369,7 @@ print(f"  Saved fig6_metrics.png/pdf")
 # =============================================================================
 # STEP 8: Topology Engine Figures (Phase 1)
 # =============================================================================
-print("\n[8/10] Generating topology figures (Phase 1)...")
+print("\n[8/12] Generating topology figures (Phase 1)...")
 
 from src.plotting import (
     plot_topology_summary, plot_persistence_diagram,
@@ -464,139 +464,337 @@ plt.close(fig)
 print(f"  Saved fig12_contact_graph.png/pdf")
 
 # =============================================================================
-# STEP 9: Phase 2 — Hybrid Hamiltonian
+# STEP 9: Expanded Variant Library (Phase 2)
 # =============================================================================
-print("\n[9/10] Computing hybrid Hamiltonian (Phase 2)...")
+print("\n[9/12] Building expanded variant library (Phase 2)...")
 
+from src.variants import (
+    build_expanded_registry, get_experimental_data,
+    generate_single_y_to_s_variants, generate_progressive_y_to_s,
+    generate_shuffled_variants, generate_charge_variants, generate_block_variants,
+)
 from src.hamiltonian import compute_all_H_eff, compute_sensitivity, predict_csat
-
-# Gather omega values
-omega_values = {name: all_metrics[name].omega for name in VARIANTS}
-
-# Compute H_eff for all variants
-all_H_eff = compute_all_H_eff(
-    variants=VARIANTS,
-    intermaps=intermaps,
-    sticker_masks=sticker_masks,
-    topology_metrics=all_topology,
-    homology_metrics=all_homology,
-    entropy_metrics=all_entropy,
-    omega_values=omega_values,
+from src.calibration import (
+    CalibrationInput, calibrate_coupling_constants,
+    compute_robustness, compare_models,
 )
 
-# Sensitivity analysis
-sensitivity = compute_sensitivity(all_H_eff)
+# Build expanded registry (original 5 + ~15 new)
+EXPANDED = build_expanded_registry(n_single_sites=6, n_shuffles=3)
+print(f"  Expanded variant library: {len(EXPANDED)} variants")
 
-# Predict c_sat (relative to WT)
-wt_H = all_H_eff['WT'].H_eff
-csat_predictions = {}
-for name, decomp in all_H_eff.items():
-    csat_predictions[name] = predict_csat(decomp.H_eff, reference_csat=1.0, reference_H=wt_H)
+# List new variants
+original_names = set(VARIANTS.keys())
+new_names = sorted(set(EXPANDED.keys()) - original_names)
+print(f"  New variants: {', '.join(new_names)}")
 
-# Print Hamiltonian decomposition
-print("\n  Hybrid Hamiltonian Decomposition:")
-print("  " + "-" * 100)
-print(f"  {'Variant':12s} {'H_chem':>9s} {'H_topo':>9s} {'H_eff':>9s} "
-      f"{'Phi_clust':>10s} {'Phi_conn':>10s} {'Phi_perc':>10s} {'Phi_arr':>10s} {'Phi_hom':>10s}")
-print("  " + "-" * 100)
-for name, d in all_H_eff.items():
-    print(f"  {name:12s} {d.H_chemistry:9.4f} {d.H_topology:9.4f} {d.H_eff:9.4f} "
-          f"{d.phi_clustering:10.4f} {d.phi_connectivity:10.4f} {d.phi_percolation:10.4f} "
-          f"{d.phi_arrangement:10.4f} {d.phi_homology:10.4f}")
+# Compute interaction maps, sticker masks, topology, homology, entropy for ALL expanded variants
+from src.intermaps import generate_finches_intermap
+from src.segmentation import identify_stickers_by_sequence, create_sticker_mask
+from src.topology import compute_topology_metrics
+from src.homology import compute_homology_metrics
+from src.entropy import compute_entropy_metrics
+from src.metrics import compute_omega
 
-# Print topology fraction
-print("\n  Topology Contribution to H_eff:")
-for name, d in all_H_eff.items():
-    print(f"    {name:12s}: {d.topology_fraction:.1%} topology, {d.chemistry_fraction:.1%} chemistry")
+exp_intermaps = {}
+exp_sticker_masks = {}
+exp_topology = {}
+exp_homology = {}
+exp_entropy = {}
+exp_omega = {}
 
-# Print c_sat predictions
-print("\n  Predicted c_sat (relative to WT):")
-for name, csat in csat_predictions.items():
-    direction = "↓ stronger LLPS" if csat < 1.0 else "↑ weaker LLPS"
-    print(f"    {name:12s}: c_sat = {csat:.4f}  ({direction})")
+config_exp = InterMapConfig(smooth=True, sigma=2.0, normalize=False)
+for name, variant in EXPANDED.items():
+    if name in VARIANTS:
+        # Reuse already-computed data for original 5
+        exp_intermaps[name] = intermaps[name]
+        exp_sticker_masks[name] = sticker_masks[name]
+        exp_topology[name] = all_topology[name]
+        exp_homology[name] = all_homology[name]
+        exp_entropy[name] = all_entropy[name]
+        exp_omega[name] = all_metrics[name].omega
+    else:
+        imap = generate_finches_intermap(variant, config=config_exp)
+        exp_intermaps[name] = imap
 
-# Print sensitivity
-print("\n  Sensitivity Analysis (which terms discriminate variants):")
-for term, s in sorted(sensitivity.sensitivities.items(), key=lambda x: -abs(x[1])):
-    bar = "█" * int(abs(s) * 20)
-    print(f"    {term:25s}: {s:.3f}  {bar}")
+        sticker_bool = identify_stickers_by_sequence(
+            variant, include_aromatics=True, include_cations=True
+        )
+        mask = create_sticker_mask(sticker_bool)
+        exp_sticker_masks[name] = mask
 
-# Save Hamiltonian results
-h_eff_dict = {name: d.to_dict() for name, d in all_H_eff.items()}
-with open(output_path / "hamiltonian.json", 'w') as f:
-    json.dump({
-        "decompositions": h_eff_dict,
-        "csat_predictions": csat_predictions,
-        "sensitivities": sensitivity.sensitivities,
-    }, f, indent=2)
-print(f"\n  Saved hamiltonian.json to {output_path}/")
+        seq = variant.sequence
+        exp_topology[name] = compute_topology_metrics(imap, mask, sequence=seq)
+        exp_homology[name] = compute_homology_metrics(imap, mask)
+        exp_entropy[name] = compute_entropy_metrics(imap, mask, seq)
+        exp_omega[name] = compute_omega(mask)
+
+print(f"  Computed interaction maps + topology for {len(EXPANDED)} variants")
 
 # =============================================================================
-# STEP 10: Phase 2 Figures
+# STEP 10: Hamiltonian + Calibration (Phase 2)
 # =============================================================================
-print("\n[10/10] Generating Phase 2 figures...")
+print("\n[10/12] Computing H_eff + calibration (Phase 2)...")
+
+# Compute H_eff for ALL expanded variants (with default params first)
+all_H_eff = compute_all_H_eff(
+    variants=EXPANDED,
+    intermaps=exp_intermaps,
+    sticker_masks=exp_sticker_masks,
+    topology_metrics=exp_topology,
+    homology_metrics=exp_homology,
+    entropy_metrics=exp_entropy,
+    omega_values=exp_omega,
+)
+
+# Print H_eff for all variants
+print("\n  H_eff Decomposition (default params, all variants):")
+print("  " + "-" * 65)
+print(f"  {'Variant':16s} {'H_chem':>9s} {'H_topo':>9s} {'H_eff':>9s} {'Topo%':>7s}")
+print("  " + "-" * 65)
+for name in EXPANDED:
+    d = all_H_eff[name]
+    print(f"  {name:16s} {d.H_chemistry:9.4f} {d.H_topology:9.4f} {d.H_eff:9.4f} {d.topology_fraction:6.1%}")
+
+# --- Calibration against experimental c_sat ---
+exp_data = get_experimental_data()
+calibration_inputs = []
+for name, edata in exp_data.items():
+    if name in EXPANDED and edata.csat_relative is not None:
+        calibration_inputs.append(CalibrationInput(
+            name=name,
+            intermap=exp_intermaps[name],
+            sticker_mask=exp_sticker_masks[name],
+            topology=exp_topology[name],
+            homology=exp_homology[name],
+            entropy=exp_entropy[name],
+            omega=exp_omega[name],
+            csat_experimental=edata.csat_relative,
+        ))
+
+print(f"\n  Calibrating against {len(calibration_inputs)} variants with experimental c_sat...")
+print(f"  Calibration set: {[ci.name for ci in calibration_inputs]}")
+
+cal_result = calibrate_coupling_constants(calibration_inputs, n_restarts=10)
+
+print(f"\n  Calibration Results:")
+print(f"    Loss: {cal_result.loss_initial:.4f} → {cal_result.loss_final:.4f}")
+print(f"    Rank corr: {cal_result.rank_correlation_initial:.3f} → {cal_result.rank_correlation_final:.3f}")
+print(f"    Optimal coupling constants:")
+p = cal_result.optimal_params
+print(f"      alpha_clustering:   {p.alpha_clustering:.4f}")
+print(f"      alpha_connectivity: {p.alpha_connectivity:.4f}")
+print(f"      alpha_percolation:  {p.alpha_percolation:.4f}")
+print(f"      alpha_arrangement:  {p.alpha_arrangement:.4f}")
+print(f"      alpha_homology:     {p.alpha_homology:.4f}")
+
+# Re-compute H_eff with calibrated params
+all_H_eff_cal = compute_all_H_eff(
+    variants=EXPANDED,
+    intermaps=exp_intermaps,
+    sticker_masks=exp_sticker_masks,
+    topology_metrics=exp_topology,
+    homology_metrics=exp_homology,
+    entropy_metrics=exp_entropy,
+    omega_values=exp_omega,
+    params=cal_result.optimal_params,
+)
+
+# Predict c_sat with calibrated H_eff
+wt_H_cal = all_H_eff_cal['WT'].H_eff
+csat_calibrated = {}
+for name, decomp in all_H_eff_cal.items():
+    csat_calibrated[name] = predict_csat(decomp.H_eff, reference_csat=1.0, reference_H=wt_H_cal)
+
+print("\n  Calibrated c_sat predictions:")
+print(f"  {'Variant':16s} {'c_sat_pred':>11s} {'c_sat_exp':>10s} {'H_eff':>9s}")
+print("  " + "-" * 50)
+for name in EXPANDED:
+    cpred = csat_calibrated[name]
+    cexp = exp_data[name].csat_relative if name in exp_data else None
+    cexp_str = f"{cexp:.2f}" if cexp is not None else "—"
+    print(f"  {name:16s} {cpred:11.4f} {cexp_str:>10s} {all_H_eff_cal[name].H_eff:9.4f}")
+
+# Sensitivity analysis with calibrated params
+sensitivity_cal = compute_sensitivity(all_H_eff_cal)
+
+# --- Model comparison: H_chem-only vs H_eff ---
+comparison = compare_models(calibration_inputs, params=cal_result.optimal_params)
+print(f"\n  Model Comparison (chemistry-only vs H_eff):")
+print(f"    Rank correlation: H_chem={comparison.rank_corr_chem_only:.3f}, H_eff={comparison.rank_corr_H_eff:.3f}")
+print(f"    RMSE(log c_sat): H_chem={comparison.rmse_log_chem_only:.3f}, H_eff={comparison.rmse_log_H_eff:.3f}")
+improvement = comparison.rank_corr_H_eff - comparison.rank_corr_chem_only
+if improvement > 0:
+    print(f"    → H_eff improves rank correlation by {improvement:.3f}")
+
+# --- Robustness analysis ---
+print("\n  Parameter robustness sweep...")
+robustness = compute_robustness(calibration_inputs, base_params=cal_result.optimal_params)
+for pname, stable in robustness.rank_stable.items():
+    status = "STABLE" if stable else "SENSITIVE"
+    print(f"    {pname:25s}: {status}")
+
+# Save all Phase 2 results
+phase2_results = {
+    "calibration": cal_result.to_dict(),
+    "model_comparison": comparison.to_dict(),
+    "robustness": robustness.to_dict(),
+    "H_eff_calibrated": {name: d.to_dict() for name, d in all_H_eff_cal.items()},
+    "csat_calibrated": csat_calibrated,
+    "sensitivity_calibrated": sensitivity_cal.sensitivities,
+}
+with open(output_path / "phase2_results.json", 'w') as f:
+    json.dump(phase2_results, f, indent=2, default=str)
+print(f"\n  Saved phase2_results.json to {output_path}/")
+
+# =============================================================================
+# STEP 11: Phase 2 Figures (original 5 variants)
+# =============================================================================
+print("\n[11/12] Generating Phase 2 figures...")
 
 from src.plotting import (
     plot_hamiltonian_decomposition, plot_sensitivity_analysis,
     plot_csat_prediction, plot_H_eff_vs_H_chem,
 )
 
-variant_names = list(VARIANTS.keys())
+variant_names_orig = list(VARIANTS.keys())
 
-# Figure 13: Hamiltonian decomposition
-fig = plot_hamiltonian_decomposition(variant_names, all_H_eff)
-plt.suptitle('Hybrid Effective Hamiltonian: $H_{eff} = H_{chem} + H_{topo}$', fontsize=14, y=1.02)
+# Figure 13: Hamiltonian decomposition (original 5, calibrated)
+H_eff_orig = {n: all_H_eff_cal[n] for n in variant_names_orig}
+fig = plot_hamiltonian_decomposition(variant_names_orig, H_eff_orig)
+plt.suptitle('Hybrid Effective Hamiltonian (calibrated)', fontsize=14, y=1.02)
 save_figure(fig, figures_dir / "fig13_hamiltonian_decomposition")
 plt.close(fig)
 print(f"  Saved fig13_hamiltonian_decomposition.png/pdf")
 
-# Figure 14: Sensitivity analysis
-fig = plot_sensitivity_analysis(sensitivity.sensitivities)
+# Figure 14: Sensitivity analysis (calibrated, all expanded variants)
+fig = plot_sensitivity_analysis(sensitivity_cal.sensitivities)
 save_figure(fig, figures_dir / "fig14_sensitivity")
 plt.close(fig)
 print(f"  Saved fig14_sensitivity.png/pdf")
 
-# Figure 15: c_sat prediction
-H_eff_values = {name: d.H_eff for name, d in all_H_eff.items()}
-fig = plot_csat_prediction(variant_names, csat_predictions, H_eff_values)
-plt.suptitle('Phase Separation Prediction from $H_{eff}$', fontsize=14, y=1.02)
+# Figure 15: c_sat prediction vs experimental
+H_eff_values_orig = {name: all_H_eff_cal[name].H_eff for name in variant_names_orig}
+csat_orig = {n: csat_calibrated[n] for n in variant_names_orig}
+fig = plot_csat_prediction(variant_names_orig, csat_orig, H_eff_values_orig)
+plt.suptitle('Phase Separation Prediction (calibrated)', fontsize=14, y=1.02)
 save_figure(fig, figures_dir / "fig15_csat_prediction")
 plt.close(fig)
 print(f"  Saved fig15_csat_prediction.png/pdf")
 
-# Figure 16: H_eff vs H_chem scatter (topology correction)
-fig = plot_H_eff_vs_H_chem(variant_names, all_H_eff)
+# Figure 16: H_eff vs H_chem scatter (calibrated)
+fig = plot_H_eff_vs_H_chem(variant_names_orig, H_eff_orig)
 save_figure(fig, figures_dir / "fig16_topology_correction")
 plt.close(fig)
 print(f"  Saved fig16_topology_correction.png/pdf")
 
 # =============================================================================
+# STEP 12: Expanded Variant Figures
+# =============================================================================
+print("\n[12/12] Generating expanded variant figures...")
+
+# Figure 17: Shuffled vs WT — same composition, different topology
+shuffled_names = [n for n in EXPANDED if n.startswith("Shuffled")] + ["WT"]
+fig, ax = plt.subplots(figsize=(10, 5))
+x = np.arange(len(shuffled_names))
+h_chem_vals = [all_H_eff_cal[n].H_chemistry for n in shuffled_names]
+h_topo_vals = [all_H_eff_cal[n].H_topology for n in shuffled_names]
+width = 0.35
+ax.bar(x - width/2, h_chem_vals, width, label='$H_{chemistry}$', color='#3498DB', edgecolor='black')
+ax.bar(x + width/2, h_topo_vals, width, label='$H_{topology}$', color='#E74C3C', edgecolor='black')
+ax.set_xticks(x)
+ax.set_xticklabels(shuffled_names, rotation=45, ha='right')
+ax.set_ylabel('Energy (kT)')
+ax.set_title('Shuffled vs WT: Same Composition, Different Topology')
+ax.legend()
+ax.axhline(y=0, color='black', linewidth=0.5)
+plt.tight_layout()
+save_figure(fig, figures_dir / "fig17_shuffled_comparison")
+plt.close(fig)
+print(f"  Saved fig17_shuffled_comparison.png/pdf")
+
+# Figure 18: Progressive Y→S titration
+prog_names = ["WT"] + [n for n in EXPANDED if n.endswith("Y_to_S") and n[0].isdigit()]
+prog_names = sorted(prog_names, key=lambda n: all_H_eff_cal[n].H_eff, reverse=False)
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
+x = np.arange(len(prog_names))
+h_effs = [all_H_eff_cal[n].H_eff for n in prog_names]
+csats = [csat_calibrated[n] for n in prog_names]
+ax1.bar(x, h_effs, color='#2C3E50', edgecolor='black')
+ax1.set_xticks(x)
+ax1.set_xticklabels(prog_names, rotation=45, ha='right')
+ax1.set_ylabel('$H_{eff}$ (kT)')
+ax1.set_title('Progressive Y→S Titration: $H_{eff}$')
+ax2.bar(x, csats, color='#E74C3C', edgecolor='black')
+ax2.set_xticks(x)
+ax2.set_xticklabels(prog_names, rotation=45, ha='right')
+ax2.set_ylabel('Predicted $c_{sat}$ (relative)')
+ax2.set_title('Progressive Y→S Titration: $c_{sat}$')
+ax2.axhline(y=1.0, color='gray', linestyle='--', alpha=0.5)
+plt.tight_layout()
+save_figure(fig, figures_dir / "fig18_progressive_titration")
+plt.close(fig)
+print(f"  Saved fig18_progressive_titration.png/pdf")
+
+# Figure 19: Block variants — clustered vs evenly-spaced
+block_names = ["WT", "Y_Clustered", "Y_EvenSpaced"]
+block_names = [n for n in block_names if n in EXPANDED]
+if len(block_names) >= 2:
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 5))
+    x = np.arange(len(block_names))
+    h_effs = [all_H_eff_cal[n].H_eff for n in block_names]
+    h_topos = [all_H_eff_cal[n].H_topology for n in block_names]
+    ax1.bar(x, h_effs, color='#9B59B6', edgecolor='black')
+    ax1.set_xticks(x)
+    ax1.set_xticklabels(block_names, rotation=45, ha='right')
+    ax1.set_ylabel('$H_{eff}$ (kT)')
+    ax1.set_title('Sticker Arrangement: $H_{eff}$')
+    ax2.bar(x, h_topos, color='#E74C3C', edgecolor='black')
+    ax2.set_xticks(x)
+    ax2.set_xticklabels(block_names, rotation=45, ha='right')
+    ax2.set_ylabel('$H_{topology}$ (kT)')
+    ax2.set_title('Sticker Arrangement: Topology Contribution')
+    ax2.axhline(y=0, color='black', linewidth=0.5)
+    plt.tight_layout()
+    save_figure(fig, figures_dir / "fig19_block_arrangement")
+    plt.close(fig)
+    print(f"  Saved fig19_block_arrangement.png/pdf")
+
+# =============================================================================
 # SUMMARY
 # =============================================================================
 print("\n" + "=" * 70)
-print("PIPELINE COMPLETE (Phase 1 + Phase 2)")
+print("PIPELINE COMPLETE (Phase 2: Calibrated Hybrid Hamiltonian)")
 print("=" * 70)
 
-print("\nGenerated Files:")
-print(f"  data/sequences/     - FASTA files and variants.json")
-print(f"  data/outputs/       - intermaps.npz, sticker_masks.npz, difference_maps.npz, metrics.json")
-print(f"  data/outputs/       - topology_metrics.json (Phase 1: topology + homology + entropy)")
-print(f"  data/outputs/       - hamiltonian.json (Phase 2: H_eff decomposition + c_sat)")
-print(f"  figures/            - 16 publication figures (PNG + PDF)")
+print(f"\nVariant Library: {len(EXPANDED)} variants")
+print(f"Calibrated against: {len(calibration_inputs)} experimental c_sat values")
+print(f"Rank correlation (H_eff vs exp): {cal_result.rank_correlation_final:.3f}")
+print(f"Model improvement over chemistry-only: "
+      f"Δρ = {comparison.rank_corr_H_eff - comparison.rank_corr_chem_only:+.3f}")
 
-print("\nKey Results — Hybrid Hamiltonian:")
+print("\nKey Results — Calibrated Hamiltonian:")
 for name in ['WT', 'AllY_to_S', 'AllY_to_F']:
-    d = all_H_eff[name]
-    c = csat_predictions[name]
-    print(f"  {name:12s}: H_eff={d.H_eff:.4f}  (chem={d.H_chemistry:.4f} + topo={d.H_topology:.4f})  "
-          f"c_sat={c:.3f}")
+    d = all_H_eff_cal[name]
+    c = csat_calibrated[name]
+    cexp = exp_data[name].csat_relative if name in exp_data else None
+    cexp_str = f"{cexp:.1f}" if cexp else "—"
+    print(f"  {name:12s}: H_eff={d.H_eff:.4f}  c_sat_pred={c:.3f}  c_sat_exp={cexp_str}")
 
-print("\nInterpretation:")
-print("  - H_eff = H_chemistry + H_topology provides a unified energy model")
-print("  - H_topology contributes an independent, quantifiable correction")
-print("  - Percolation threshold is the dominant topology term")
-print("  - AllY_to_F has the deepest H_eff → strongest predicted LLPS")
-print("  - AllY_to_S loses both chemistry AND topology → c_sat rises sharply")
-print("  - The topology correction amplifies differences beyond what chemistry alone predicts")
+# Highlight shuffled variant insight
+shuffled_insight = [n for n in EXPANDED if n.startswith("Shuffled")]
+if shuffled_insight:
+    wt_H = all_H_eff_cal['WT'].H_eff
+    shuffled_H = [all_H_eff_cal[n].H_eff for n in shuffled_insight]
+    print(f"\nShuffled Sequence Test (same composition, different topology):")
+    print(f"  WT H_eff = {wt_H:.4f}")
+    for n, h in zip(shuffled_insight, shuffled_H):
+        delta = h - wt_H
+        print(f"  {n} H_eff = {h:.4f}  (ΔH_eff = {delta:+.4f})")
+    print(f"  → Topology alone shifts H_eff by up to {max(abs(h - wt_H) for h in shuffled_H):.4f} kT")
+
+print(f"\nGenerated Files:")
+print(f"  data/outputs/phase2_results.json  — calibration, robustness, model comparison")
+print(f"  figures/                          — 19 publication figures (PNG + PDF)")
 
 print("\n✓ All computations successful!")

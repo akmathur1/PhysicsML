@@ -19,6 +19,8 @@ from . import topology
 from . import homology
 from . import entropy
 from . import hamiltonian
+from . import variants
+from . import calibration
 from . import plotting
 
 __version__ = "0.2.0"
