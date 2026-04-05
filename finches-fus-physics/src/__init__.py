@@ -21,6 +21,7 @@ from . import entropy
 from . import hamiltonian
 from . import variants
 from . import calibration
+from . import mtl_model
 from . import plotting
 
 __version__ = "0.2.0"

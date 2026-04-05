@@ -20,7 +20,7 @@ print("=" * 70)
 # =============================================================================
 # STEP 1: Sequences and Variants
 # =============================================================================
-print("\n[1/12] Loading sequences and variants...")
+print("\n[1/14] Loading sequences and variants...")
 
 from src.sequences import (
     VARIANTS, FUS_LCD_SEQUENCE, get_variant,
@@ -46,7 +46,7 @@ for name, variant in VARIANTS.items():
 # =============================================================================
 # STEP 2: Force Field and Interaction Maps
 # =============================================================================
-print("\n[2/12] Computing interaction maps...")
+print("\n[2/14] Computing interaction maps...")
 
 from src.forcefield import get_default_matrix, get_most_attractive_pairs
 from src.intermaps import (
@@ -79,7 +79,7 @@ for name, imap in intermaps.items():
 # =============================================================================
 # STEP 3: Sticker-Linker Segmentation
 # =============================================================================
-print("\n[3/12] Computing sticker-linker segmentation...")
+print("\n[3/14] Computing sticker-linker segmentation...")
 
 from src.segmentation import (
     compute_interaction_profile,
@@ -119,7 +119,7 @@ for name, mask in sticker_masks.items():
 # =============================================================================
 # STEP 4: Difference Maps
 # =============================================================================
-print("\n[4/12] Computing difference maps...")
+print("\n[4/14] Computing difference maps...")
 
 from src.intermaps import compute_all_difference_maps
 
@@ -139,7 +139,7 @@ for name, dmap in diff_maps.items():
 # =============================================================================
 # STEP 5: Biophysical Metrics
 # =============================================================================
-print("\n[5/12] Computing topology engine (Phase 1)...")
+print("\n[5/14] Computing topology engine (Phase 1)...")
 
 from src.topology import compute_topology_metrics, compute_percolation_sweep
 from src.homology import compute_homology_metrics
@@ -199,7 +199,7 @@ with open(output_path / "topology_metrics.json", 'w') as f:
     _json.dump({"topology": topo_dict, "homology": homo_dict, "entropy": entr_dict}, f, indent=2)
 print(f"\n  Saved topology_metrics.json to {output_path}/")
 
-print("\n[6/12] Computing biophysical metrics...")
+print("\n[6/14] Computing biophysical metrics...")
 
 from src.metrics import compute_all_metrics
 
@@ -227,7 +227,7 @@ for name, m in all_metrics.items():
 # =============================================================================
 # STEP 6: Generate Figures
 # =============================================================================
-print("\n[7/12] Generating publication figures...")
+print("\n[7/14] Generating publication figures...")
 
 import matplotlib
 matplotlib.use('Agg')  # Non-interactive backend
@@ -369,7 +369,7 @@ print(f"  Saved fig6_metrics.png/pdf")
 # =============================================================================
 # STEP 8: Topology Engine Figures (Phase 1)
 # =============================================================================
-print("\n[8/12] Generating topology figures (Phase 1)...")
+print("\n[8/14] Generating topology figures (Phase 1)...")
 
 from src.plotting import (
     plot_topology_summary, plot_persistence_diagram,
@@ -466,13 +466,9 @@ print(f"  Saved fig12_contact_graph.png/pdf")
 # =============================================================================
 # STEP 9: Expanded Variant Library (Phase 2)
 # =============================================================================
-print("\n[9/12] Building expanded variant library (Phase 2)...")
+print("\n[9/14] Building expanded variant library (Phase 2)...")
 
-from src.variants import (
-    build_expanded_registry, get_experimental_data,
-    generate_single_y_to_s_variants, generate_progressive_y_to_s,
-    generate_shuffled_variants, generate_charge_variants, generate_block_variants,
-)
+from src.variants import build_expanded_registry, get_experimental_data
 from src.hamiltonian import compute_all_H_eff, compute_sensitivity, predict_csat
 from src.calibration import (
     CalibrationInput, calibrate_coupling_constants,
@@ -534,7 +530,7 @@ print(f"  Computed interaction maps + topology for {len(EXPANDED)} variants")
 # =============================================================================
 # STEP 10: Hamiltonian + Calibration (Phase 2)
 # =============================================================================
-print("\n[10/12] Computing H_eff + calibration (Phase 2)...")
+print("\n[10/14] Computing H_eff + calibration (Phase 2)...")
 
 # Compute H_eff for ALL expanded variants (with default params first)
 all_H_eff = compute_all_H_eff(
@@ -634,6 +630,99 @@ for pname, stable in robustness.rank_stable.items():
     status = "STABLE" if stable else "SENSITIVE"
     print(f"    {pname:25s}: {status}")
 
+# =============================================================================
+# STEP 11: Multi-Task Learning (MTL) — addresses overfitting
+# =============================================================================
+print("\n[11/14] Training multi-task network (MTL)...")
+
+from src.mtl_model import (
+    extract_features, build_training_data, train_and_predict,
+    MTLConfig,
+)
+from src.metrics import compute_all_metrics
+
+# Extract features for all expanded variants
+mtl_features = {}
+mtl_h_chem = {}
+for name in EXPANDED:
+    variant = EXPANDED[name]
+    # Compute quick metrics for feature extraction
+    if name in all_metrics:
+        m = all_metrics[name]
+    else:
+        m = compute_all_metrics(name, variant, exp_intermaps[name], exp_sticker_masks[name],
+                                include_topology=False)
+    mtl_features[name] = extract_features(m, exp_topology[name], exp_homology[name], exp_entropy[name])
+    # H_chemistry from the Hamiltonian decomposition (available for ALL variants)
+    mtl_h_chem[name] = all_H_eff[name].H_chemistry
+
+# Experimental c_sat (sparse: only 3 variants)
+mtl_csat_exp = {}
+for name, edata in exp_data.items():
+    if name in EXPANDED and edata.csat_relative is not None:
+        mtl_csat_exp[name] = edata.csat_relative
+
+# Phase separation labels (dense: ALL 20 variants get a label)
+# Based on: does the variant have meaningful sticker content?
+mtl_phase_labels = {}
+for name in EXPANDED:
+    variant = EXPANDED[name]
+    n_stickers = exp_sticker_masks[name].n_stickers
+    if name in exp_data and exp_data[name].phase_separates is not None:
+        mtl_phase_labels[name] = exp_data[name].phase_separates
+    else:
+        # Heuristic: phase separates if it has >5 stickers
+        mtl_phase_labels[name] = n_stickers > 5
+
+# Build training data
+training_data = build_training_data(
+    variant_names=list(EXPANDED.keys()),
+    features=mtl_features,
+    h_chem_values=mtl_h_chem,
+    csat_experimental=mtl_csat_exp,
+    phase_labels=mtl_phase_labels,
+)
+
+print(f"  Training samples: {len(training_data)}")
+print(f"  c_sat labels: {sum(1 for s in training_data if s.csat_target is not None)}")
+print(f"  Phase labels: {sum(1 for s in training_data if s.phase_target is not None)}")
+print(f"  H_chem labels: {sum(1 for s in training_data if s.h_chem_target is not None)}")
+
+# Train MTL network
+mtl_config = MTLConfig(
+    hidden_1=16, hidden_2=8,
+    lr=0.005, n_epochs=3000,
+    lambda_h_eff=0.0,    # no H_eff ground truth — this is what we're predicting
+    lambda_csat=1.0,      # sparse c_sat supervision
+    lambda_phase=0.5,     # dense phase classification
+    lambda_h_chem=0.5,    # dense physics anchor
+    seed=42,
+)
+
+mtl_net, mtl_result = train_and_predict(training_data, config=mtl_config)
+
+print(f"\n  MTL Training: final loss = {mtl_result.training_history[-1]['loss']:.4f}")
+
+# Print MTL predictions
+print("\n  MTL Predictions:")
+print(f"  {'Variant':16s} {'c_sat_MTL':>10s} {'c_sat_exp':>10s} {'Phase_P':>8s} {'H_chem_pred':>12s} {'H_chem_true':>12s}")
+print("  " + "-" * 75)
+for name in EXPANDED:
+    pred = mtl_result.predictions[name]
+    cexp = mtl_csat_exp.get(name)
+    cexp_str = f"{cexp:.2f}" if cexp is not None else "—"
+    hc_true = mtl_h_chem[name]
+    print(f"  {name:16s} {pred['csat_relative']:10.3f} {cexp_str:>10s} {pred['phase_prob']:8.3f} "
+          f"{pred['H_chemistry']:12.4f} {hc_true:12.4f}")
+
+# Compare MTL c_sat accuracy vs Nelder-Mead on the 3 labeled variants
+print("\n  MTL vs Nelder-Mead on experimental c_sat:")
+for name in mtl_csat_exp:
+    c_exp = mtl_csat_exp[name]
+    c_nm = csat_calibrated[name]
+    c_mtl = mtl_result.predictions[name]['csat_relative']
+    print(f"    {name:12s}: exp={c_exp:.2f}  NM={c_nm:.3f}  MTL={c_mtl:.3f}")
+
 # Save all Phase 2 results
 phase2_results = {
     "calibration": cal_result.to_dict(),
@@ -642,15 +731,16 @@ phase2_results = {
     "H_eff_calibrated": {name: d.to_dict() for name, d in all_H_eff_cal.items()},
     "csat_calibrated": csat_calibrated,
     "sensitivity_calibrated": sensitivity_cal.sensitivities,
+    "mtl": mtl_result.to_dict(),
 }
 with open(output_path / "phase2_results.json", 'w') as f:
     json.dump(phase2_results, f, indent=2, default=str)
 print(f"\n  Saved phase2_results.json to {output_path}/")
 
 # =============================================================================
-# STEP 11: Phase 2 Figures (original 5 variants)
+# STEP 12: Phase 2 Figures (original 5 variants)
 # =============================================================================
-print("\n[11/12] Generating Phase 2 figures...")
+print("\n[12/14] Generating Phase 2 figures...")
 
 from src.plotting import (
     plot_hamiltonian_decomposition, plot_sensitivity_analysis,
@@ -689,9 +779,9 @@ plt.close(fig)
 print(f"  Saved fig16_topology_correction.png/pdf")
 
 # =============================================================================
-# STEP 12: Expanded Variant Figures
+# STEP 13: Expanded Variant Figures
 # =============================================================================
-print("\n[12/12] Generating expanded variant figures...")
+print("\n[13/14] Generating expanded variant figures...")
 
 # Figure 17: Shuffled vs WT — same composition, different topology
 shuffled_names = [n for n in EXPANDED if n.startswith("Shuffled")] + ["WT"]
@@ -761,40 +851,88 @@ if len(block_names) >= 2:
     print(f"  Saved fig19_block_arrangement.png/pdf")
 
 # =============================================================================
+# STEP 14: MTL Figures
+# =============================================================================
+print("\n[14/14] Generating MTL figures...")
+
+# Figure 20: MTL c_sat predictions vs experimental (all variants)
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
+
+# Left: bar chart of MTL c_sat for all variants
+all_variant_names = list(EXPANDED.keys())
+mtl_csats = [mtl_result.predictions[n]['csat_relative'] for n in all_variant_names]
+colors_mtl = ['#2C3E50' if n in mtl_csat_exp else '#95A5A6' for n in all_variant_names]
+x = np.arange(len(all_variant_names))
+ax1.bar(x, mtl_csats, color=colors_mtl, edgecolor='black')
+# Overlay experimental points
+for i, name in enumerate(all_variant_names):
+    if name in mtl_csat_exp:
+        ax1.scatter(i, mtl_csat_exp[name], color='#E74C3C', s=100, zorder=5,
+                    marker='*', label='Experimental' if i == 0 else None)
+ax1.set_xticks(x)
+ax1.set_xticklabels(all_variant_names, rotation=60, ha='right', fontsize=8)
+ax1.set_ylabel('$c_{sat}$ (relative to WT)')
+ax1.set_title('MTL Predicted $c_{sat}$ (dark = labeled, gray = unlabeled)')
+ax1.set_yscale('log')
+ax1.axhline(y=1.0, color='gray', linestyle='--', alpha=0.5)
+
+# Right: phase classification probabilities
+phase_probs = [mtl_result.predictions[n]['phase_prob'] for n in all_variant_names]
+phase_colors = ['#2ECC71' if p > 0.5 else '#E74C3C' for p in phase_probs]
+ax2.bar(x, phase_probs, color=phase_colors, edgecolor='black')
+ax2.axhline(y=0.5, color='black', linestyle='--', alpha=0.5)
+ax2.set_xticks(x)
+ax2.set_xticklabels(all_variant_names, rotation=60, ha='right', fontsize=8)
+ax2.set_ylabel('P(phase separates)')
+ax2.set_title('MTL Phase Classification')
+ax2.set_ylim(0, 1.05)
+plt.tight_layout()
+save_figure(fig, figures_dir / "fig20_mtl_predictions")
+plt.close(fig)
+print(f"  Saved fig20_mtl_predictions.png/pdf")
+
+# Figure 21: H_chem reconstruction accuracy
+fig, ax = plt.subplots(figsize=(7, 6))
+hc_true = [mtl_h_chem[n] for n in all_variant_names]
+hc_pred = [mtl_result.predictions[n]['H_chemistry'] for n in all_variant_names]
+ax.scatter(hc_true, hc_pred, s=60, c='#3498DB', edgecolors='black', zorder=5)
+for i, name in enumerate(all_variant_names):
+    ax.annotate(name, (hc_true[i], hc_pred[i]), textcoords="offset points",
+                xytext=(5, 5), fontsize=7)
+lims = [min(min(hc_true), min(hc_pred)) * 1.1, max(max(hc_true), max(hc_pred)) * 0.9]
+ax.plot(lims, lims, 'k--', alpha=0.3)
+ax.set_xlabel('True $H_{chemistry}$ (kT)')
+ax.set_ylabel('MTL Predicted $H_{chemistry}$ (kT)')
+ax.set_title('Physics Anchor: $H_{chem}$ Reconstruction')
+plt.tight_layout()
+save_figure(fig, figures_dir / "fig21_hchem_reconstruction")
+plt.close(fig)
+print(f"  Saved fig21_hchem_reconstruction.png/pdf")
+
+# =============================================================================
 # SUMMARY
 # =============================================================================
 print("\n" + "=" * 70)
-print("PIPELINE COMPLETE (Phase 2: Calibrated Hybrid Hamiltonian)")
+print("PIPELINE COMPLETE (Phase 2: Calibrated + MTL Hybrid Hamiltonian)")
 print("=" * 70)
 
 print(f"\nVariant Library: {len(EXPANDED)} variants")
-print(f"Calibrated against: {len(calibration_inputs)} experimental c_sat values")
-print(f"Rank correlation (H_eff vs exp): {cal_result.rank_correlation_final:.3f}")
-print(f"Model improvement over chemistry-only: "
-      f"Δρ = {comparison.rank_corr_H_eff - comparison.rank_corr_chem_only:+.3f}")
+print(f"Nelder-Mead calibrated against: {len(calibration_inputs)} experimental c_sat values")
+print(f"MTL trained on: {len(training_data)} variants "
+      f"({sum(1 for s in training_data if s.csat_target is not None)} c_sat, "
+      f"{sum(1 for s in training_data if s.phase_target is not None)} phase, "
+      f"{sum(1 for s in training_data if s.h_chem_target is not None)} H_chem labels)")
 
-print("\nKey Results — Calibrated Hamiltonian:")
+print("\nKey Results — MTL vs Nelder-Mead on experimental c_sat:")
 for name in ['WT', 'AllY_to_S', 'AllY_to_F']:
-    d = all_H_eff_cal[name]
-    c = csat_calibrated[name]
-    cexp = exp_data[name].csat_relative if name in exp_data else None
-    cexp_str = f"{cexp:.1f}" if cexp else "—"
-    print(f"  {name:12s}: H_eff={d.H_eff:.4f}  c_sat_pred={c:.3f}  c_sat_exp={cexp_str}")
-
-# Highlight shuffled variant insight
-shuffled_insight = [n for n in EXPANDED if n.startswith("Shuffled")]
-if shuffled_insight:
-    wt_H = all_H_eff_cal['WT'].H_eff
-    shuffled_H = [all_H_eff_cal[n].H_eff for n in shuffled_insight]
-    print(f"\nShuffled Sequence Test (same composition, different topology):")
-    print(f"  WT H_eff = {wt_H:.4f}")
-    for n, h in zip(shuffled_insight, shuffled_H):
-        delta = h - wt_H
-        print(f"  {n} H_eff = {h:.4f}  (ΔH_eff = {delta:+.4f})")
-    print(f"  → Topology alone shifts H_eff by up to {max(abs(h - wt_H) for h in shuffled_H):.4f} kT")
+    c_exp = mtl_csat_exp.get(name, None)
+    c_nm = csat_calibrated[name]
+    c_mtl = mtl_result.predictions[name]['csat_relative']
+    cexp_str = f"{c_exp:.2f}" if c_exp else "—"
+    print(f"  {name:12s}: exp={cexp_str}  NM={c_nm:.3f}  MTL={c_mtl:.3f}")
 
 print(f"\nGenerated Files:")
-print(f"  data/outputs/phase2_results.json  — calibration, robustness, model comparison")
-print(f"  figures/                          — 19 publication figures (PNG + PDF)")
+print(f"  data/outputs/phase2_results.json  — calibration, robustness, MTL, model comparison")
+print(f"  figures/                          — 21 publication figures (PNG + PDF)")
 
 print("\n✓ All computations successful!")
