@@ -121,7 +121,7 @@ def _sigmoid_grad(s: np.ndarray) -> np.ndarray:
 
 
 class Linear:
-    """Simple linear layer: y = Wx + b."""
+    """Simple linear layer: y = Wx + b, with Adam optimizer state."""
 
     def __init__(self, in_features: int, out_features: int, seed: int = 0):
         rng = np.random.RandomState(seed)
@@ -133,6 +133,12 @@ class Linear:
         # Gradients
         self.dW = np.zeros_like(self.W)
         self.db = np.zeros_like(self.b)
+
+        # Adam state: first moment (m) and second moment (v) for W and b
+        self.mW = np.zeros_like(self.W)
+        self.vW = np.zeros_like(self.W)
+        self.mb = np.zeros_like(self.b)
+        self.vb = np.zeros_like(self.b)
 
         # Cache for backward
         self._input = None
@@ -151,10 +157,49 @@ class Linear:
         self.dW[:] = 0.0
         self.db[:] = 0.0
 
-    def step(self, lr: float):
-        """SGD update."""
-        self.W -= lr * self.dW
-        self.b -= lr * self.db
+    def step_adam(self, lr: float, t: int, beta1: float = 0.9,
+                  beta2: float = 0.999, eps: float = 1e-8):
+        """
+        Adam optimizer update (Kingma & Ba, 2015).
+
+        Adaptive learning rates per-parameter using first and second
+        moment estimates of the gradient. Key advantages over SGD:
+        - Handles sparse gradients (important for MTL with missing labels)
+        - Automatic per-parameter learning rate scaling
+        - Bias correction for early training steps
+
+        Parameters
+        ----------
+        lr : float
+            Base learning rate (alpha in the paper)
+        t : int
+            Current timestep (1-indexed, for bias correction)
+        beta1 : float
+            Exponential decay rate for first moment (default: 0.9)
+        beta2 : float
+            Exponential decay rate for second moment (default: 0.999)
+        eps : float
+            Numerical stability constant (default: 1e-8)
+        """
+        # Update biased first moment estimate
+        self.mW = beta1 * self.mW + (1 - beta1) * self.dW
+        self.mb = beta1 * self.mb + (1 - beta1) * self.db
+
+        # Update biased second raw moment estimate
+        self.vW = beta2 * self.vW + (1 - beta2) * (self.dW ** 2)
+        self.vb = beta2 * self.vb + (1 - beta2) * (self.db ** 2)
+
+        # Bias-corrected estimates
+        bc1 = 1 - beta1 ** t
+        bc2 = 1 - beta2 ** t
+        mW_hat = self.mW / bc1
+        mb_hat = self.mb / bc1
+        vW_hat = self.vW / bc2
+        vb_hat = self.vb / bc2
+
+        # Parameter update
+        self.W -= lr * mW_hat / (np.sqrt(vW_hat) + eps)
+        self.b -= lr * mb_hat / (np.sqrt(vb_hat) + eps)
 
 
 # =============================================================================
@@ -168,6 +213,10 @@ class MTLConfig:
     hidden_2: int = 8
     lr: float = 0.001
     n_epochs: int = 2000
+    # Adam hyperparameters
+    beta1: float = 0.9       # first moment decay
+    beta2: float = 0.999     # second moment decay
+    eps: float = 1e-8        # numerical stability
     # Task loss weights
     lambda_h_eff: float = 1.0
     lambda_csat: float = 1.0
@@ -391,11 +440,14 @@ class MultiTaskNetwork:
                 loss = self._backward_and_step(sample.features, out, targets)
                 epoch_loss += loss
 
-            # Average gradients and step
+            # Average gradients and Adam step
             for layer in self._all_layers():
                 layer.dW /= n_samples
                 layer.db /= n_samples
-                layer.step(cfg.lr)
+                layer.step_adam(
+                    lr=cfg.lr, t=epoch + 1,
+                    beta1=cfg.beta1, beta2=cfg.beta2, eps=cfg.eps,
+                )
 
             epoch_loss /= n_samples
 
