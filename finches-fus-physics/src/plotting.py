@@ -129,7 +129,7 @@ def plot_interaction_map(
         intermap,
         cmap=cmap,
         aspect="equal",
-        origin="upper",
+        origin="lower",
         vmin=vmin,
         vmax=vmax,
     )

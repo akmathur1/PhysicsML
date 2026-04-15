@@ -258,10 +258,17 @@ abs_max = max(abs(intermaps['WT'].min()), abs(intermaps['WT'].max()),
               abs(intermaps['AllY_to_S'].min()), abs(intermaps['AllY_to_S'].max()))
 
 for ax, name, title in zip(axes, ['WT', 'AllY_to_S', 'AllY_to_F'], ['A. WT', 'B. All Y→S', 'C. All Y→F']):
-    im = ax.imshow(intermaps[name], cmap='RdBu_r', vmin=-abs_max, vmax=abs_max)
+    n = intermaps[name].shape[0]
+    im = ax.imshow(intermaps[name], cmap='RdBu_r', vmin=-abs_max, vmax=abs_max, origin='lower')
     ax.set_title(title)
     ax.set_xlabel('Residue')
     ax.set_ylabel('Residue')
+    tick_interval = max(1, n // 10) * 10
+    ticks = np.arange(0, n, tick_interval)
+    ax.set_xticks(ticks)
+    ax.set_yticks(ticks)
+    ax.set_xticklabels(ticks + 1)
+    ax.set_yticklabels(ticks + 1)
 
 fig.colorbar(im, ax=axes, shrink=0.8, label='Energy (kT)')
 plt.tight_layout()
